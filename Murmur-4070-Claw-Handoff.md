@@ -239,7 +239,85 @@ GET <MURMUR_BASE_URL>/api/v1/room
 
 连接器可以用它做启动后的状态恢复，但不要把整个房间快照原样发送到第三方服务。
 
-## 9. 网络和安全要求
+## 9. 切换本地 Claw 的底层模型
+
+模型切换必须由本机 Claw 真正执行。网页只能创建一个 pending 请求，不能直接把网页状态当成模型已经切换。
+
+### 9.1 注册本机实际可用模型
+
+启动时，在设备注册成功后，把本机模型服务中实际存在并可调用的模型注册到 Murmur：
+
+~~~text
+POST <MURMUR_BASE_URL>/api/v1/models/register
+~~~
+
+~~~json
+{
+  "deviceId": "pc-4070",
+  "models": [
+    {
+      "id": "ollama/qwen-local",
+      "name": "本地 Qwen",
+      "provider": "ollama",
+      "kind": "local",
+      "capabilities": ["通用", "中文"],
+      "contextWindow": 32768,
+      "available": true
+    }
+  ]
+}
+~~~
+
+不要注册一个本机不存在或当前不可调用的模型。模型 ID 必须使用 Claw 本机实际 provider/model 标识。
+
+### 9.2 轮询网页发出的切换请求
+
+每 5–10 秒读取一次：
+
+~~~text
+GET <MURMUR_BASE_URL>/api/v1/models?deviceId=pc-4070
+~~~
+
+响应中的 `devices[].pendingRequests` 是网页发出的、尚未处理的模型切换请求。对同一个 Agent 必须串行处理，不要并行切换。
+
+### 9.3 执行真正的本地模型切换
+
+当收到请求时：
+
+1. 验证 `deviceId` 和 `agentId` 是本机已注册的身份；
+2. 验证 `modelId` 出现在本机已注册且 `available=true` 的模型目录中；
+3. 调用本机实际模型服务或 OpenClaw 配置机制完成切换；
+4. 进行一次最小健康检查，确认新模型能够响应；
+5. 成功后回报 `applied`，失败后回报 `failed`；
+6. 不要只因为请求创建成功就回报 applied。
+
+成功回报：
+
+~~~text
+POST <MURMUR_BASE_URL>/api/v1/models/ack
+~~~
+
+~~~json
+{
+  "requestId": "model_req_xxx",
+  "status": "applied",
+  "actualModelId": "ollama/qwen-local"
+}
+~~~
+
+失败回报：
+
+~~~json
+{
+  "requestId": "model_req_xxx",
+  "status": "failed",
+  "error": "本地模型服务没有找到该模型"
+}
+~~~
+
+如果模型切换会中断正在执行的高优先级任务，先向 George 报告影响；不要静默中断任务。
+
+## 10. 网络和安全要求
 
 - 只建立向 Murmur 服务器的出站 HTTPS 请求，不要为 Claw 新开公网监听端口。
 - 不做路由器端口映射，不把 OpenClaw Gateway 的内部端口暴露到公网。
@@ -251,7 +329,7 @@ GET <MURMUR_BASE_URL>/api/v1/room
 - 如果服务器返回 503，向 George 报告服务端尚未配置 MURMUR_API_TOKEN。
 - 如果网络暂时不可用，缓存少量待发送事件，恢复后按顺序补发；不要无限增长本地队列。
 
-## 10. 启动前必须向 George 报告
+## 11. 启动前必须向 George 报告
 
 在真正修改 OpenClaw 配置或安装依赖之前，请先报告：
 
@@ -264,7 +342,7 @@ GET <MURMUR_BASE_URL>/api/v1/room
 
 不要猜测缺失配置，不要打印密钥，不要在没有 George 确认的情况下执行破坏性操作。
 
-## 11. 完成标准
+## 12. 完成标准
 
 连接器完成后，向 George 给出一份简短报告，包含：
 
@@ -280,4 +358,3 @@ GET <MURMUR_BASE_URL>/api/v1/room
 ~~~text
 Claw 已接入 4070 主机，Murmur connector 心跳正常；尚未执行任何需要 George 批准的外部操作。
 ~~~
-
