@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, KeyboardEvent } from 'react';
 
-type View = 'chat' | 'tasks' | 'fleet' | 'activity';
+type View = 'chat' | 'tasks' | 'fleet' | 'activity' | 'api';
 type Tone = 'plum' | 'lime' | 'orange' | 'blue' | 'pink' | 'slate' | 'mint';
 
 type Agent = {
@@ -84,6 +84,7 @@ const navItems: { id: View; label: string; icon: string; count?: number }[] = [
   { id: 'tasks', label: '任务', icon: '◫', count: 5 },
   { id: 'fleet', label: '设备', icon: '⌘' },
   { id: 'activity', label: '活动', icon: '◎' },
+  { id: 'api', label: '接口', icon: '◇' },
 ];
 
 const statusOrder: Task['status'][] = ['待认领', '执行中', '等待主人', '已完成'];
@@ -104,6 +105,21 @@ export default function Home() {
   const [checkpointOutcome, setCheckpointOutcome] = useState<'partial' | 'ask' | null>(null);
   const [routing, setRouting] = useState(false);
   const [notice, setNotice] = useState('');
+  const [apiSummary, setApiSummary] = useState<{ status: 'checking' | 'online' | 'offline'; devices: number; agents: number }>({ status: 'checking', devices: 0, agents: 0 });
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/v1/health', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('API unavailable');
+        const payload = await response.json() as { data?: { devices?: number; agents?: number } };
+        if (active) setApiSummary({ status: 'online', devices: payload.data?.devices ?? 0, agents: payload.data?.agents ?? 0 });
+      })
+      .catch(() => {
+        if (active) setApiSummary((current) => ({ ...current, status: 'offline' }));
+      });
+    return () => { active = false; };
+  }, []);
 
   const allAgents = useMemo(() => devices.flatMap((device) => device.agents), []);
   const allTasks = useMemo(() => [...createdTasks, ...seedTasks], [createdTasks]);
@@ -175,7 +191,7 @@ export default function Home() {
           <span className="brand-mark">M</span>
           <span className="brand-copy"><strong>Murmur</strong><small>Agent 作战室</small></span>
         </button>
-        <div className="room-title"><span className="live-dot" /><div><strong>{OWNER_NAME} 的 Agent 们</strong><small>{paused ? '全局已暂停' : '3 台设备 · 7 个 Agent 在线'}</small></div></div>
+        <div className="room-title"><span className={`live-dot ${apiSummary.status !== 'online' ? 'muted' : ''}`} /><div><strong>{OWNER_NAME} 的 Agent 们</strong><small>{paused ? '全局已暂停' : apiSummary.status === 'online' ? `接口在线 · ${apiSummary.devices} 台真实设备已接入` : '正在连接通用接口…'}</small></div></div>
         <div className="header-actions">
           <button className={`pause-button ${paused ? 'active' : ''}`} onClick={() => { setPaused((value) => !value); flash(paused ? '全体 Agent 已恢复' : '全体 Agent 已暂停'); }}><span>{paused ? '▶' : 'Ⅱ'}</span>{paused ? '恢复全体' : '暂停全体'}</button>
           <button className="owner-chip"><span>主</span> {OWNER_NAME}</button>
@@ -224,6 +240,7 @@ export default function Home() {
         {activeView === 'tasks' && <TasksView tasks={allTasks} onSelect={(task) => { setSelectedTask(task); setSelectedAgent(null); }} onGuard={showLoopGuard} />}
         {activeView === 'fleet' && <FleetView devices={devices} routing={routing} onRoute={() => { setRouting(true); flash('正在模拟：书房主机 → 工作站 → 客厅小主机'); window.setTimeout(() => setRouting(false), 2800); }} onAgent={(agent) => { setSelectedAgent(agent); setSelectedTask(null); }} />}
         {activeView === 'activity' && <ActivityView />}
+        {activeView === 'api' && <ApiView apiSummary={apiSummary} />}
       </section>
 
       <aside className={`presence-panel ${selectedAgent || selectedTask ? 'inspector-open' : ''}`}>
@@ -283,7 +300,16 @@ function TasksView({ tasks, onSelect, onGuard }: { tasks: Task[]; onSelect: (tas
 }
 
 function FleetView({ devices, routing, onRoute, onAgent }: { devices: Device[]; routing: boolean; onRoute: () => void; onAgent: (agent: Agent) => void }) {
-  return <div className="workspace-view fleet-view"><div className="view-header"><div><span className="eyebrow">FLEET MAP</span><h1>三台电脑，三个本机老大</h1><p>主人位于设备之上。跨设备消息由两端老大接力，但任务仍只有一个负责人。</p></div><button className="route-button" onClick={onRoute} disabled={routing}>{routing ? '跨设备路由中…' : '模拟跨设备派单'}</button></div><div className={`topology ${routing ? 'routing' : ''}`}><div className="owner-node"><span>主</span><b>主人</b><small>全局规则与最终决定</small></div><div className="topology-lines"><i /><i /><i /><span /></div><div className="device-islands">{devices.map((device, deviceIndex) => <article className="device-island" key={device.id}><div className="island-head"><span>0{deviceIndex + 1}</span><div><b>{device.name}</b><small>{device.meta}</small></div><em>{device.load}% 负载</em></div><div className="island-agents">{device.agents.map((agent) => <button key={agent.id} className={agent.leader ? 'leader' : ''} onClick={() => onAgent(agent)}><span className={`mini-avatar ${agent.tone}`}>{agent.name[0]}</span><span><b>{agent.name}</b><small>{agent.truth}</small></span>{agent.leader && <em>♛ 老大</em>}</button>)}</div></article>)}</div>{routing && <div className="route-caption"><span className="route-pulse" />Mochi → Nova → Lumi：上下文已结构化接力</div>}</div><div className="fleet-rules"><div><span>1</span><b>每台只有一个老大</b><p>使用唯一身份与心跳租约，避免同一设备出现两个指挥者。</p></div><div><span>2</span><b>跨设备也保留负责人</b><p>通信可以接力，任务所有权只有接收方明确接受后才改变。</p></div><div><span>3</span><b>离线不会静默丢单</b><p>设备失联时保留最后心跳，并等待恢复或请主人重新分配。</p></div></div></div>;
+  return <div className="workspace-view fleet-view"><div className="view-header"><div><span className="eyebrow">FLEET MAP</span><h1>任意数量设备，一个本机老大</h1><p>主人位于设备之上。每台电脑只需要注册一个 Gateway，跨设备消息由两端老大接力，但任务仍只有一个负责人。</p></div><button className="route-button" onClick={onRoute} disabled={routing}>{routing ? '跨设备路由中…' : '模拟跨设备派单'}</button></div><div className={`topology ${routing ? 'routing' : ''}`}><div className="owner-node"><span>主</span><b>主人</b><small>全局规则与最终决定</small></div><div className="topology-lines"><i /><i /><i /><span /></div><div className="device-islands">{devices.map((device, deviceIndex) => <article className="device-island" key={device.id}><div className="island-head"><span>0{deviceIndex + 1}</span><div><b>{device.name}</b><small>{device.meta}</small></div><em>{device.load}% 负载</em></div><div className="island-agents">{device.agents.map((agent) => <button key={agent.id} className={agent.leader ? 'leader' : ''} onClick={() => onAgent(agent)}><span className={`mini-avatar ${agent.tone}`}>{agent.name[0]}</span><span><b>{agent.name}</b><small>{agent.truth}</small></span>{agent.leader && <em>♛ 老大</em>}</button>)}</div></article>)}</div>{routing && <div className="route-caption"><span className="route-pulse" />Mochi → Nova → Lumi：上下文已结构化接力</div>}</div><div className="fleet-rules"><div><span>1</span><b>每台只有一个老大</b><p>使用唯一身份与心跳租约，避免同一设备出现两个指挥者。</p></div><div><span>2</span><b>跨设备也保留负责人</b><p>通信可以接力，任务所有权只有接收方明确接受后才改变。</p></div><div><span>3</span><b>离线不会静默丢单</b><p>设备失联时保留最后心跳，并等待恢复或请主人重新分配。</p></div></div></div>;
+}
+
+function ApiView({ apiSummary }: { apiSummary: { status: 'checking' | 'online' | 'offline'; devices: number; agents: number } }) {
+  const statusText = apiSummary.status === 'online' ? '接口在线' : apiSummary.status === 'checking' ? '正在检查' : '本地接口未响应';
+  return <div className="workspace-view api-view"><div className="view-header"><div><span className="eyebrow">CONNECTOR API · V1</span><h1>接几个，接口都能接</h1><p>设备只需要注册一次，再用心跳和事件上报状态。核心房间不依赖固定的电脑数量。</p></div><span className={`api-status ${apiSummary.status}`}><i />{statusText}</span></div><div className="api-stats"><div><span>协议</span><b>murmur.v1</b></div><div><span>真实设备</span><b>{apiSummary.devices}</b></div><div><span>真实 Agent</span><b>{apiSummary.agents}</b></div><div><span>本机老大规则</span><b>1 / 设备</b></div></div><div className="endpoint-list"><ApiEndpoint method="GET" path="/api/v1/room" title="读取房间快照" detail="聊天室、设备、Agent、任务和审计事件的统一视图。" /><ApiEndpoint method="POST" path="/api/v1/connect" title="注册或重连设备" detail="传入一台设备和任意数量 Agent；服务会校验本机老大唯一性。" /><ApiEndpoint method="POST" path="/api/v1/heartbeat" title="上报心跳与趣味状态" detail="同步负载、当前工具、Token 摘要，以及“正在听歌 / 睡觉”等状态。" /><ApiEndpoint method="POST" path="/api/v1/messages" title="发送群聊消息" detail="支持 owner、agent、system 三种发送者和 @mentions。" /><ApiEndpoint method="POST" path="/api/v1/tasks" title="创建并自动接单" detail="可以指定 Agent，也可以按能力从在线 Agent 中自动选择。" /></div><div className="api-note"><span>↗</span><div><b>连接器只需要记住 3 件事</b><p>注册设备 · 每 15–30 秒发心跳 · 有消息或结果时发事件。当前接口默认使用内存 Store，后续接入持久化数据库时不需要改变这些路径。</p></div><code>Authorization: Bearer MURMUR_API_TOKEN</code></div></div>;
+}
+
+function ApiEndpoint({ method, path, title, detail }: { method: 'GET' | 'POST'; path: string; title: string; detail: string }) {
+  return <article className="api-endpoint"><span className={`api-method ${method.toLowerCase()}`}>{method}</span><div><code>{path}</code><b>{title}</b><p>{detail}</p></div><span className="api-arrow">→</span></article>;
 }
 
 function ActivityView() {
