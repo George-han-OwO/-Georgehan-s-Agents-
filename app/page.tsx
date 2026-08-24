@@ -44,6 +44,8 @@ type FeedItem =
   | { id: string; kind: 'message'; text: string; at: string }
   | { id: string; kind: 'task'; task: Task; at: string };
 
+const OWNER_NAME = 'George';
+
 const devices: Device[] = [
   {
     id: 'study', name: '书房主机', meta: 'Windows · 心跳 2 秒前', load: 38,
@@ -173,10 +175,10 @@ export default function Home() {
           <span className="brand-mark">M</span>
           <span className="brand-copy"><strong>Murmur</strong><small>Agent 作战室</small></span>
         </button>
-        <div className="room-title"><span className="live-dot" /><div><strong>主人的作战室</strong><small>{paused ? '全局已暂停' : '3 台设备 · 7 个 Agent 在线'}</small></div></div>
+        <div className="room-title"><span className="live-dot" /><div><strong>{OWNER_NAME} 的 Agent 们</strong><small>{paused ? '全局已暂停' : '3 台设备 · 7 个 Agent 在线'}</small></div></div>
         <div className="header-actions">
           <button className={`pause-button ${paused ? 'active' : ''}`} onClick={() => { setPaused((value) => !value); flash(paused ? '全体 Agent 已恢复' : '全体 Agent 已暂停'); }}><span>{paused ? '▶' : 'Ⅱ'}</span>{paused ? '恢复全体' : '暂停全体'}</button>
-          <button className="owner-chip"><span>主</span> George</button>
+          <button className="owner-chip"><span>主</span> {OWNER_NAME}</button>
         </div>
       </header>
 
@@ -239,7 +241,7 @@ export default function Home() {
 }
 
 function OwnerMessage({ text, mention, at }: { text: string; mention?: string; at: string }) {
-  return <div className="message owner-message"><div className="avatar owner-avatar">主</div><div className="message-body"><div className="message-meta"><b>George</b><span>主人</span><time>{at}</time></div><p>{text} {mention && <mark>{mention}</mark>}</p></div></div>;
+  return <div className="message owner-message"><div className="avatar owner-avatar">主</div><div className="message-body"><div className="message-meta"><b>{OWNER_NAME}</b><span>主人</span><time>{at}</time></div><p>{text} {mention && <mark>{mention}</mark>}</p></div></div>;
 }
 
 function AgentMessage() {
@@ -291,7 +293,7 @@ function ActivityView() {
     ['14:36:08', '跨设备咨询', 'Nova 邀请 Lumi 协作，负责人仍为 Mochi', 'route'],
     ['14:34:51', '任务咨询', 'Mochi @Nova 验证跨设备通信', 'route'],
     ['14:33:20', '自动接单', 'Mochi 因能力匹配且负载较低接受任务 #T-028', 'claim'],
-    ['14:32:58', '主人发布', 'George 创建任务 #T-028', 'owner'],
+    ['14:32:58', '主人发布', `${OWNER_NAME} 创建任务 #T-028`, 'owner'],
     ['14:30:04', '设备心跳', '三台设备完成状态同步，7 个 Agent 在线', 'system'],
   ];
   return <div className="workspace-view activity-view"><div className="view-header"><div><span className="eyebrow">AUDIT STREAM</span><h1>他们在干什么，一眼可查</h1><p>这里只展示结构化进度和脱敏工具摘要，不展示密钥或 Agent 的隐藏思维过程。</p></div><button className="filter-button">全部事件⌄</button></div><div className="audit-summary"><span><b>42</b>今日事件</span><span><b>3</b>跨设备接力</span><span><b>1</b>循环已阻止</span><span><b>0</b>危险操作</span></div><div className="audit-list">{events.map(([time, label, text, tone]) => <article key={time}><time>{time}</time><span className={`audit-icon ${tone}`}>{tone === 'guard' ? '!' : tone === 'owner' ? '主' : '·'}</span><div><b>{label}</b><p>{text}</p></div><button>查看详情</button></article>)}</div><div className="privacy-note"><span>◉</span><p><b>可观察，但不泄密</b><br />工具名称、耗时、token 与产物可见；原始凭据、敏感参数和隐藏推理保持私密。</p></div></div>;
