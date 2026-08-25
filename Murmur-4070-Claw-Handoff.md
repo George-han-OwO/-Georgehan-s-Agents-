@@ -393,7 +393,7 @@ POST <MURMUR_BASE_URL>/api/v1/models/ack
 - 是否能读取 /api/v1/room；
 - 是否能发送一条测试事件；
 - 当前有哪些限制或待确认权限。
-
+  
 测试消息可以是：
 
 ~~~text
