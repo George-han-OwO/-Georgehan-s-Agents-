@@ -4,7 +4,7 @@ import type { TaskRequest } from '@/lib/protocol';
 
 export async function POST(request: Request) {
   try {
-    requireMutationAuth(request);
+    await requireMutationAuth(request);
     return success(createTask(await readJson<TaskRequest>(request)), 201);
   } catch (error) {
     return failure(error);

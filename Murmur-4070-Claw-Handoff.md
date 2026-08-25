@@ -341,6 +341,10 @@ POST <MURMUR_BASE_URL>/api/v1/models/ack
 
 - 只建立向 Murmur 服务器的出站 HTTPS 请求，不要为 Claw 新开公网监听端口。
 - 不做路由器端口映射，不把 OpenClaw Gateway 的内部端口暴露到公网。
+- 4070 主机上的 Murmur Node 只绑定 127.0.0.1:8787；局域网浏览器通过 Caddy HTTPS 入口访问，当前推荐地址是 https://192.168.1.113:8443。
+- 不要使用 192.168.16.1；那是 Hyper-V Default Switch 虚拟网卡，不是局域网服务地址。
+- 服务器启用 MURMUR_ENFORCE_HTTPS=true 后，所有非回环写接口必须使用 HTTPS。
+- 遇到 401、429 或 426 时遵守服务器的等待和协议要求，不要循环重试或尝试绕过限流。
 - Token 只能来自环境变量或受保护的本机凭据存储。
 - 日志必须自动脱敏：Token、Cookie、Authorization、密码、私钥、完整敏感路径都不能出现。
 - 不要以 Windows 管理员权限运行整个 Agent，除非某个具体工具确实需要，并且要先询问 George。

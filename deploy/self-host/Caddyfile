@@ -1,0 +1,15 @@
+# Murmur LAN TLS reverse proxy for the 4070 Windows host.
+# Keep the Node/Vinext process on 127.0.0.1:8787 and expose only this HTTPS port.
+# Install Caddy's internal CA on each trusted browser/device before use.
+
+:8443 {
+	 tls internal
+	 reverse_proxy 127.0.0.1:8787
+	 header {
+		 Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		 X-Content-Type-Options "nosniff"
+		 X-Frame-Options "DENY"
+		 Referrer-Policy "no-referrer"
+		 Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+	 }
+}

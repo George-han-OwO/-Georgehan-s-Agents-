@@ -4,7 +4,7 @@ import type { AcknowledgeModelRequest } from '@/lib/protocol';
 
 export async function POST(request: Request) {
   try {
-    requireMutationAuth(request);
+    await requireMutationAuth(request);
     return success(acknowledgeModelSwitch(await readJson<AcknowledgeModelRequest>(request)));
   } catch (error) {
     return failure(error);

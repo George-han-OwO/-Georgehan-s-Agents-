@@ -4,7 +4,7 @@ import type { RegisterModelsRequest } from '@/lib/protocol';
 
 export async function POST(request: Request) {
   try {
-    requireMutationAuth(request);
+    await requireMutationAuth(request);
     return success(registerModels(await readJson<RegisterModelsRequest>(request)), 201);
   } catch (error) {
     return failure(error);
