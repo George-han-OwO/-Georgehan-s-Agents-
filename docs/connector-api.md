@@ -10,6 +10,8 @@ GET /api/v1/health
 GET /api/v1/room
 ```
 
+生产环境中，`/api/v1/room` 和模型目录也需要 `Authorization: Bearer <MURMUR_API_TOKEN>`；只有健康检查保留最小公开状态，避免未认证请求读取消息、任务和模型信息。
+
 ## 注册设备
 
 ```http

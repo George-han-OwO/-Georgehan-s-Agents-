@@ -65,6 +65,8 @@ x-murmur-token: <MURMUR_API_TOKEN>
 
 优先使用 Authorization: Bearer。
 
+生产环境读取房间快照和模型目录也必须带同一个 Authorization；只有最小健康检查可以不带凭证。
+
 ## 3. 启动时注册设备和 Agent
 
 连接器启动后，先读取本机实际可用的 OpenClaw Agent 和能力，再调用：

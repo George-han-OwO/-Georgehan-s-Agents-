@@ -1,6 +1,11 @@
-import { success } from '@/lib/api';
+import { requireMutationAuth, success, failure } from '@/lib/api';
 import { readSnapshot } from '@/lib/room-store';
 
-export function GET() {
-  return success(readSnapshot());
+export async function GET(request: Request) {
+  try {
+    await requireMutationAuth(request);
+    return success(readSnapshot());
+  } catch (error) {
+    return failure(error);
+  }
 }

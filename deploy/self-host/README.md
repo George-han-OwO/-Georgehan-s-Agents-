@@ -15,7 +15,14 @@ OpenClaw Gateway    ->  127.0.0.1:18789（不开放）
 
 ## 运行方式
 
-1. Murmur Node/Vinext 进程只绑定 `127.0.0.1:8787`。
+1. Murmur Node/Vinext 进程只绑定 `127.0.0.1:8787`。PowerShell 启动前设置：
+
+```powershell
+$env:PORT = "8787"
+$env:MURMUR_ENFORCE_HTTPS = "true"
+npm run start -- --hostname 127.0.0.1
+```
+
 2. Caddy 使用本目录的 `Caddyfile`，监听 `8443` 并转发到 `127.0.0.1:8787`。
 3. 在浏览器和需要访问 Murmur 的设备上安装 Caddy 的内部 CA 根证书。
 4. Windows 防火墙只允许 Private profile 的 LocalSubnet 访问 TCP 8443。

@@ -3,7 +3,6 @@ import { StoreError } from './room-store';
 import { PROTOCOL_VERSION } from './protocol';
 
 const SECURITY_KEY = '__murmurApiSecurityV1';
-const AUTH_WINDOW_MS = 60_000;
 const AUTH_MAX_FAILURES = 5;
 const AUTH_LOCK_MS = 5 * 60_000;
 const REQUEST_WINDOW_MS = 60_000;
