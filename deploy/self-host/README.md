@@ -20,7 +20,7 @@ OpenClaw Gateway    ->  127.0.0.1:18789（不开放）
 ```powershell
 $env:PORT = "8787"
 $env:MURMUR_ENFORCE_HTTPS = "true"
-npm run start -- --hostname 127.0.0.1
+npx vinext start --hostname 127.0.0.1 --port 8787
 ```
 
 2. Caddy 使用本目录的 `Caddyfile`，监听 `8443` 并转发到 `127.0.0.1:8787`。
