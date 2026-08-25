@@ -51,6 +51,24 @@ Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like '192.16
 
 Node.js 必须是 `22.13.0` 或更高版本。
 
+### Caddy 缺失时的批准安装方式
+
+如果第 2 步报告 Caddy 未安装，并且 George 明确批准安装，可以使用 WinGet 的**精确包 ID**。先检查包信息和发布者：
+
+```powershell
+winget show --id CaddyServer.Caddy --exact --source winget
+```
+
+只有在输出名称为 `Caddy`、包 ID 为 `CaddyServer.Caddy`，并且发布者/主页指向 Caddy 项目时，才执行：
+
+```powershell
+winget install --id CaddyServer.Caddy --exact --source winget `
+  --accept-package-agreements --accept-source-agreements
+caddy version
+```
+
+不要使用含糊的 `winget install caddy`，不要接受名称、发布者或来源不匹配的包。若安装后 PowerShell 尚未识别 `caddy`，新开一个 PowerShell 再执行 `caddy version`；仍不成功时只报告问题，不要自行下载未知二进制文件。
+
 ## 3. 获取代码
 
 建议安装目录：`C:\Murmur\agent-room`。不要删除已有目录；若目录已经存在，先确认它是否是同一个仓库。
