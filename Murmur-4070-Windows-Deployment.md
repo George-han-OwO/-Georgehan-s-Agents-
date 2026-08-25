@@ -17,8 +17,8 @@
 ```text
 本机 Claw / connector      -> http://127.0.0.1:8787
 Murmur Node/Vinext          -> 只监听 127.0.0.1:8787
-Caddy HTTPS                 -> 监听 <局域网 IP>:8443
-局域网浏览器 / 其他设备     -> https://<4070 局域网 IP>:8443
+Caddy HTTPS（当前试运行）    -> 只监听 127.0.0.1 / ::1 的 https://localhost:8443
+局域网浏览器 / 其他设备     -> 当前不允许接入；后续需单独批准
 OpenClaw Gateway            -> 127.0.0.1:18789（不开放）
 Ollama / 本地模型服务        -> 仅本机访问（不开放）
 ```
@@ -140,7 +140,8 @@ $env:MURMUR_ENFORCE_HTTPS = 'true'
 Set-Location C:\Murmur\agent-room
 $env:PORT = '8787'
 $env:MURMUR_ENFORCE_HTTPS = 'true'
-npx vinext start --hostname 127.0.0.1 --port 8787
+$env:MURMUR_STATE_PATH = 'C:\Murmur\state\murmur.sqlite'
+& '.\node_modules\.bin\vinext.cmd' start --hostname 127.0.0.1 --port 8787
 ```
 
 成功后应该只看到类似的本机地址：
@@ -168,12 +169,13 @@ Get-NetTCPConnection -LocalPort 8787 -State Listen | Format-Table LocalAddress, 
 C:\Murmur\agent-room\deploy\self-host\Caddyfile
 ```
 
-它监听 `8443`、使用 Caddy 内部 CA 签发局域网 HTTPS 证书，并只反向代理到 `127.0.0.1:8787`。
+当前版本使用 `https://localhost:8443`、`bind 127.0.0.1 [::1]`，只反向代理到 `127.0.0.1:8787`。这不是局域网入口；不要自行把站点地址改成 `:8443`、`0.0.0.0`、`::` 或 `192.168.1.113`。
 
 在确认 Caddy 已安装且 George 同意后启动：
 
 ```powershell
-caddy run --config C:\Murmur\agent-room\deploy\self-host\Caddyfile
+caddy validate --config C:\Murmur\agent-room\deploy\self-host\Caddyfile --adapter caddyfile
+caddy run --config C:\Murmur\agent-room\deploy\self-host\Caddyfile --adapter caddyfile
 ```
 
 首次使用 Caddy 内部 CA 时，需要把 Caddy 的根证书安装到**每台可信浏览器/设备**的受信任根证书存储。不要把根证书安装到不受信任设备上。
@@ -181,16 +183,10 @@ caddy run --config C:\Murmur\agent-room\deploy\self-host\Caddyfile
 在 4070 主机上验证 HTTPS 入口：
 
 ```powershell
-Invoke-WebRequest https://localhost:8443/api/v1/health -SkipCertificateCheck
+curl.exe --fail --silent --show-error --ssl-revoke-best-effort https://localhost:8443/api/v1/health
 ```
 
-在另一台已经信任 Caddy CA 的局域网设备上访问：
-
-```text
-https://192.168.1.113:8443
-```
-
-若实际局域网地址已变化，请替换为第 2 步检查得到的实际地址。
+不要使用 `-k`、`--insecure` 或 `--ssl-no-revoke`。`--ssl-revoke-best-effort` 仅用于 Windows Schannel 在内部 CA 没有 CRL/OCSP 分发点时的本机验收；生产连接器不应照抄该参数。局域网接入、根证书分发和 Caddy 的 LAN 名称/IP 配置需要 George 另行明确批准。
 
 ## 7. Windows 防火墙
 
@@ -257,12 +253,12 @@ C:\Murmur\agent-room\docs\connector-api.md
 - [ ] `npm ci`、`npm run build` 是否成功；
 - [ ] Murmur 健康检查是否返回 `status: ok`；
 - [ ] `8787` 是否只监听 `127.0.0.1`；
-- [ ] Caddy 是否正在监听 `8443`；
-- [ ] 局域网 HTTPS 入口是否可从可信设备打开；
-- [ ] 防火墙是否仅允许 Private + LocalSubnet 访问 `8443`；
+- [ ] Caddy 是否只监听 `127.0.0.1:8443` 和 `::1:8443`；
+- [ ] `curl.exe --ssl-revoke-best-effort https://localhost:8443/api/v1/health` 是否返回 `status: ok`；
+- [ ] 已确认没有为 `8443` 创建 LAN/Public 防火墙放行规则；
 - [ ] 是否确认未做任何路由器端口映射；
 - [ ] Claw 是否已完成设备配对、设备 ID、keyVersion（不要报告私钥或配对码）；
-- [ ] 当前限制：设备凭证、nonce 和房间状态仍是进程内存，服务重启会清空运行时状态。
+- [ ] 已设置受限访问的 `MURMUR_STATE_PATH`；确认 SQLite 及其 `-wal` / `-shm` 文件不在 Git 或同步盘中。
 
 ## 10. 现在不要做的事
 

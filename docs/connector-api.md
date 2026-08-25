@@ -138,7 +138,7 @@ Content-Type: application/json
 
 消息使用 `POST /api/v1/messages`，任务使用 `POST /api/v1/tasks`，通用结构化活动使用 `POST /api/v1/events`。所有接口都会返回更新后的 room snapshot，前端可以据此刷新群聊、任务板和活动流。
 
-当前默认存储是进程内 Store，目的是先稳定接入协议。后续切换到 D1 或其他持久化存储时，接口路径和设备连接器不需要改变。
+4070 Node 自托管默认将房间状态写入本地 SQLite（`MURMUR_STATE_PATH`，未设置时为 `data/murmur.sqlite`）；接口路径和设备连接器不需要因重启恢复而改变。公开预览环境没有本机 SQLite，不能作为持久化协作服务。
 
 ## 本地 Claw 模型切换
 
@@ -219,4 +219,4 @@ POST /api/v1/models/ack
 }
 ```
 
-模型目录、待处理请求和当前选择目前也使用进程内 Store；后续换成持久化数据库时，模型切换协议不变。
+模型目录、待处理请求和当前选择在 4070 Node 自托管时同样保存到本地 SQLite；服务重启后 Connector 仍应重新发送模型目录，并按 `pending` 请求继续处理。

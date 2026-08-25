@@ -2,12 +2,12 @@
 
 ## 目标
 
-让 Murmur 只在 4070 主机本地运行，Claw 通过回环地址连接；同一局域网的其他设备通过 Caddy 的 HTTPS 入口访问。不要把 OpenClaw Gateway、Ollama 或 Murmur 的 Node 端口直接暴露到公网。
+让 Murmur 只在 4070 主机本地运行，Claw 通过回环地址连接。仓库自带的 Caddyfile 也是**仅本机回环** HTTPS 试运行配置；在完成持久化、设备准入和根证书分发审查前，不开放局域网入口。不要把 OpenClaw Gateway、Ollama 或 Murmur 的 Node 端口直接暴露到公网。
 
 ```text
 Claw（同一台电脑）  ->  http://127.0.0.1:8787
-局域网浏览器        ->  https://192.168.1.113:8443
-Caddy               ->  127.0.0.1:8787
+本机浏览器          ->  https://localhost:8443
+Caddy               ->  127.0.0.1:8787（只监听 127.0.0.1 / ::1）
 OpenClaw Gateway    ->  127.0.0.1:18789（不开放）
 ```
 
@@ -20,15 +20,15 @@ OpenClaw Gateway    ->  127.0.0.1:18789（不开放）
 ```powershell
 $env:PORT = "8787"
 $env:MURMUR_ENFORCE_HTTPS = "true"
-npx vinext start --hostname 127.0.0.1 --port 8787
+$env:MURMUR_STATE_PATH = "C:\Murmur\state\murmur.sqlite"
+& '.\node_modules\.bin\vinext.cmd' start --hostname 127.0.0.1 --port 8787
 ```
 
-2. Caddy 使用本目录的 `Caddyfile`，监听 `8443` 并转发到 `127.0.0.1:8787`。
-3. 在浏览器和需要访问 Murmur 的设备上安装 Caddy 的内部 CA 根证书。
-4. Windows 防火墙只允许 Private profile 的 LocalSubnet 访问 TCP 8443。
-5. 不给 8787、18789、Ollama 端口添加入站规则。
+2. Caddy 使用本目录的 `Caddyfile`，仅在本机 `localhost:8443` 监听并转发到 `127.0.0.1:8787`。
+3. Caddy 会给 `localhost` 签发内部证书；根证书仅安装到这台主机的信任库。
+4. 不创建 `8443` 的防火墙放行规则，不给 8787、18789、Ollama 端口添加入站规则。
 
-示例防火墙规则：
+仅在后续明确批准“受限局域网接入”后，才另行创建指定 LAN 名称/IP 的 Caddy 配置、向可信客户端分发根证书，并评审类似下面的防火墙规则：
 
 ```powershell
 New-NetFirewallRule -DisplayName "Murmur HTTPS LAN" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8443 -Profile Private -RemoteAddress LocalSubnet
@@ -61,9 +61,10 @@ finally {
 ```text
 MURMUR_API_TOKEN=<随机值>
 MURMUR_ENFORCE_HTTPS=true
+MURMUR_STATE_PATH=C:\Murmur\state\murmur.sqlite
 ```
 
-Claw 如果使用 `127.0.0.1:8787`，可以保持本机回环连接；其他设备必须使用 Caddy 的 HTTPS 地址。若要让 Claw 也走 HTTPS，则把它配置为 `https://127.0.0.1:8443` 并信任 Caddy CA。
+Claw 如果使用 `127.0.0.1:8787`，可以保持本机回环连接。后续局域网设备必须使用另行批准的 Caddy HTTPS 名称/IP；不要在当前回环 Caddyfile 中自行加入 `192.168.1.113`。若要让本机 Claw 也走 HTTPS，则使用 `https://localhost:8443` 并信任 Caddy CA。
 
 ## 防护范围
 
@@ -84,5 +85,6 @@ Claw 如果使用 `127.0.0.1:8787`，可以保持本机回环连接；其他设�
 
 - 如果 4070 Windows 主机本身被恶意软件或管理员权限入侵，应用层无法保护本机内存中的 Token 或模型内容。
 - 如果 Caddy CA 根证书被安装到不可信设备，HTTPS 信任边界会被破坏。
-- 当前限流、设备凭证和模型请求状态是进程内存；生产版本还需要持久化审计、设备凭证、锁定记录和备份。重启进程会清空当前配对状态，因此正式部署前应接入持久化数据库。
+- Node 自托管会把房间、模型目录/请求、设备公钥、一次性配对码散列、nonce 防重放窗口与认证限流/锁定记录写入 SQLite。它不保存管理员 Token 或设备私钥。`MURMUR_STATE_PATH` 所在目录应只允许受信任账户访问，并排除在 Git、网盘同步和临时清理之外。
+- SQLite 解决重启恢复，不等于备份或严格 PKI 吊销。上线局域网前仍需要制定离线备份、恢复演练、根证书分发、设备撤销和防火墙范围。
 - 如果要求 Murmur 服务器本身也无法看到任务正文，需要额外设计端到端加密；这会改变服务器路由、搜索和审计能力，不能只加一个开关。

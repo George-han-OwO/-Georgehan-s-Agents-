@@ -1,4 +1,5 @@
 import { addAuditEvent, StoreError, readSnapshot } from './room-store';
+import { loadState, saveState } from './state-store';
 import type {
   AcknowledgeModelRequest,
   ModelDescriptor,
@@ -15,15 +16,15 @@ type ModelRuntimeStore = {
   requests: ModelSwitchRequest[];
 };
 
-type RuntimeGlobal = typeof globalThis & { [MODEL_STORE_KEY]?: ModelRuntimeStore };
-
 const isoNow = () => new Date().toISOString();
 const makeId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
 
 function getModelStore() {
-  const runtime = globalThis as RuntimeGlobal;
-  runtime[MODEL_STORE_KEY] ??= { catalogs: {}, selected: {}, requests: [] };
-  return runtime[MODEL_STORE_KEY]!;
+  return loadState<ModelRuntimeStore>(MODEL_STORE_KEY, () => ({ catalogs: {}, selected: {}, requests: [] }));
+}
+
+function persist(store: ModelRuntimeStore) {
+  saveState(MODEL_STORE_KEY, store);
 }
 
 function requiredText(value: unknown, field: string, maxLength = 160) {
@@ -71,6 +72,7 @@ export function registerModels(input: RegisterModelsRequest) {
   const store = getModelStore();
   store.catalogs[deviceId] = models;
   addAuditEvent({ kind: 'model.catalog', text: `${deviceId} 注册了 ${models.length} 个模型`, actorId: deviceId });
+  persist(store);
   return readModels(deviceId);
 }
 
@@ -133,6 +135,7 @@ export function requestModelSwitch(input: SelectModelRequest) {
   };
   store.requests = [request, ...store.requests].slice(0, 200);
   addAuditEvent({ kind: 'model.switch_requested', text: `${agent.name} 收到模型切换请求：${modelId}`, actorId: agentId });
+  persist(store);
   return { request, models: readModels(deviceId) };
 }
 
@@ -157,6 +160,7 @@ export function acknowledgeModelSwitch(input: AcknowledgeModelRequest) {
     text: input.status === 'applied' ? `${request.agentId} 已切换到 ${input.actualModelId ?? request.modelId}` : `${request.agentId} 模型切换失败：${request.error}`,
     actorId: request.agentId,
   });
+  persist(store);
   return { request, models: readModels(request.deviceId) };
 }
 

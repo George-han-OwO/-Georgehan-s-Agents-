@@ -32,12 +32,12 @@ Murmur Web + Connector API
 模型切换请求（pending） ──► 对应设备本地执行 ──► applied / failed
 ```
 
-推荐的 4070 Windows 自托管拓扑：
+当前通过验收的 4070 Windows 自托管拓扑：
 
 ```text
 本机 Claw                 -> http://127.0.0.1:8787
-局域网浏览器 / 其他设备    -> https://<4070 的局域网 IP>:8443
-Caddy HTTPS 入口          -> http://127.0.0.1:8787
+Caddy 本机 HTTPS          -> https://localhost:8443（只绑定 127.0.0.1 / ::1）
+局域网浏览器 / 其他设备    -> 当前不接入；等待单独的 LAN 准入审查
 OpenClaw Gateway / Ollama -> 只绑定回环地址，不开放公网
 ```
 
@@ -65,10 +65,11 @@ npm run build
 ```powershell
 $env:MURMUR_API_TOKEN = "<只放在受保护的环境变量或凭据存储中>"
 $env:MURMUR_ENFORCE_HTTPS = "true"
-npx vinext start --hostname 127.0.0.1 --port 8787
+$env:MURMUR_STATE_PATH = "C:\Murmur\state\murmur.sqlite"
+& '.\node_modules\.bin\vinext.cmd' start --hostname 127.0.0.1 --port 8787
 ```
 
-局域网访问请通过 Caddy 的 HTTPS 入口；完整配置见 [自托管安全入口](deploy/self-host/README.md)。
+完整的本机安全入口和后续 LAN 准入边界见 [自托管安全入口](deploy/self-host/README.md)。
 
 如果要把整份操作说明直接交给 4070 Windows 主机或其本机 Claw，请使用 [Murmur-4070-Windows-Deployment.md](Murmur-4070-Windows-Deployment.md)。
 
@@ -113,8 +114,9 @@ npx vinext start --hostname 127.0.0.1 --port 8787
 - 设备凭证互相隔离；一个设备签名不能注册、心跳或管理另一台设备。
 - 管理员可轮换和吊销设备密钥。
 - 日志、消息、事件和 Git 仓库中都不能记录 Token、私钥、配对码、密码或 Cookie。
+- 4070 的 Node 自托管运行时会把房间、模型切换、设备公钥、一次性配对码散列、nonce 防重放窗口与限流/锁定记录保存到本地 SQLite；Token 和设备私钥不进入数据库。
 
-当前设备凭证、nonce、限流记录和房间数据仍保存在进程内存中。重启 Murmur 进程会清空这些运行时状态；正式长期部署前应接入持久化数据库并建立备份。应用层也无法保护已被恶意软件或管理员权限完全控制的 4070 主机。
+Windows 自托管默认路径是项目目录下的 `data/murmur.sqlite`，可用 `MURMUR_STATE_PATH` 改到受限访问的本地目录。该 SQLite 文件及 `-wal` / `-shm` 伴随文件必须排除在 Git 与同步盘之外，并纳入离线备份。Sites 预览环境不提供本机文件系统，只使用非持久化内存状态，不能当作长期协作服务。应用层也无法保护已被恶意软件或管理员权限完全控制的 4070 主机。
 
 ## 项目结构
 
@@ -136,4 +138,4 @@ npm run lint     # 代码检查
 
 ## 当前状态
 
-已实现多设备接入、群聊/任务/状态、模型切换两阶段确认、管理员凭证保护、请求限流、防重放签名、设备配对、密钥轮换与吊销。下一阶段是将房间和设备身份状态迁移到持久化数据库，并补充主人侧的可视化配对与设备管理界面。
+已实现多设备接入、群聊/任务/状态、模型切换两阶段确认、管理员凭证保护、请求限流、防重放签名、设备配对、密钥轮换与吊销，以及 4070 Node 自托管的 SQLite 重启恢复。下一阶段是主人侧的可视化配对/设备管理界面、受限局域网接入和可审计备份恢复流程。

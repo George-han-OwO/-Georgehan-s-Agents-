@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { StoreError } from './room-store';
+import { loadState, saveState } from './state-store';
 import { PROTOCOL_VERSION } from './protocol';
 import {
   type DeviceAuthContext,
@@ -14,16 +15,16 @@ const REQUEST_WINDOW_MS = 60_000;
 const REQUEST_MAX_PER_WINDOW = 240;
 
 type SecurityState = {
-  failures: Map<string, { count: number; lockedUntil: number }>;
-  requests: Map<string, { count: number; windowStartedAt: number }>;
+  failures: Record<string, { count: number; lockedUntil: number }>;
+  requests: Record<string, { count: number; windowStartedAt: number }>;
 };
 
-type RuntimeGlobal = typeof globalThis & { [SECURITY_KEY]?: SecurityState };
-
 function getSecurityState() {
-  const runtime = globalThis as RuntimeGlobal;
-  runtime[SECURITY_KEY] ??= { failures: new Map(), requests: new Map() };
-  return runtime[SECURITY_KEY]!;
+  return loadState<SecurityState>(SECURITY_KEY, () => ({ failures: {}, requests: {} }));
+}
+
+function persistSecurityState(state: SecurityState) {
+  saveState(SECURITY_KEY, state);
 }
 
 function getClientAddress(request: Request) {
@@ -34,12 +35,20 @@ function getClientAddress(request: Request) {
 }
 
 function prune(state: SecurityState, now: number) {
-  for (const [key, value] of state.failures) {
-    if (value.lockedUntil < now && value.count === 0) state.failures.delete(key);
+  let changed = false;
+  for (const [key, value] of Object.entries(state.failures)) {
+    if (value.lockedUntil < now && value.count === 0) {
+      delete state.failures[key];
+      changed = true;
+    }
   }
-  for (const [key, value] of state.requests) {
-    if (now - value.windowStartedAt > REQUEST_WINDOW_MS * 2) state.requests.delete(key);
+  for (const [key, value] of Object.entries(state.requests)) {
+    if (now - value.windowStartedAt > REQUEST_WINDOW_MS * 2) {
+      delete state.requests[key];
+      changed = true;
+    }
   }
+  return changed;
 }
 
 function takeRequestSlot(request: Request) {
@@ -47,12 +56,14 @@ function takeRequestSlot(request: Request) {
   const now = Date.now();
   prune(state, now);
   const key = `${getClientAddress(request)}:${new URL(request.url).pathname}`;
-  const current = state.requests.get(key);
+  const current = state.requests[key];
   if (!current || now - current.windowStartedAt >= REQUEST_WINDOW_MS) {
-    state.requests.set(key, { count: 1, windowStartedAt: now });
+    state.requests[key] = { count: 1, windowStartedAt: now };
+    persistSecurityState(state);
     return;
   }
   current.count += 1;
+  persistSecurityState(state);
   if (current.count > REQUEST_MAX_PER_WINDOW) throw new StoreError('请求过于频繁，请稍后重试', 429);
 }
 
@@ -90,21 +101,34 @@ async function authenticateAdmin(request: Request, configuredToken: string): Pro
     ? authorization.slice(7)
     : request.headers.get('x-murmur-token');
   const key = getClientAddress(request);
-  const state = getSecurityState();
   const now = Date.now();
-  const failure = state.failures.get(key);
+  const state = getSecurityState();
+  prune(state, now);
+  const failure = state.failures[key];
   if (failure?.lockedUntil && failure.lockedUntil > now) throw new StoreError('接口暂时锁定，请稍后重试', 429);
   if (!suppliedToken || suppliedToken.length > 512 || !(await constantTimeEqual(suppliedToken, configuredToken))) {
-    const next = failure && failure.lockedUntil <= now ? failure : { count: 0, lockedUntil: 0 };
+    // Re-read after the asynchronous comparison so simultaneous failures from
+    // one client cannot overwrite each other's lockout counter.
+    const currentState = getSecurityState();
+    const currentNow = Date.now();
+    prune(currentState, currentNow);
+    const currentFailure = currentState.failures[key];
+    if (currentFailure?.lockedUntil && currentFailure.lockedUntil > currentNow) {
+      throw new StoreError('接口暂时锁定，请稍后重试', 429);
+    }
+    const next = currentFailure && currentFailure.lockedUntil <= currentNow ? currentFailure : { count: 0, lockedUntil: 0 };
     next.count += 1;
     if (next.count >= AUTH_MAX_FAILURES) {
-      next.lockedUntil = now + AUTH_LOCK_MS;
+      next.lockedUntil = currentNow + AUTH_LOCK_MS;
       next.count = 0;
     }
-    state.failures.set(key, next);
+    currentState.failures[key] = next;
+    persistSecurityState(currentState);
     throw new StoreError('无效的接口凭证', 401);
   }
-  state.failures.delete(key);
+  const currentState = getSecurityState();
+  delete currentState.failures[key];
+  persistSecurityState(currentState);
   return { kind: 'admin' };
 }
 

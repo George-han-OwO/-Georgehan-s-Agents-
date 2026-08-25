@@ -13,6 +13,7 @@ import {
   type TaskRequest,
   PROTOCOL_VERSION,
 } from './protocol';
+import { loadState, saveState } from './state-store';
 
 const STORE_KEY = '__murmurRoomStoreV1';
 const HEARTBEAT_TIMEOUT_MS = 45_000;
@@ -26,8 +27,6 @@ export class StoreError extends Error {
     this.status = status;
   }
 }
-
-type RuntimeGlobal = typeof globalThis & { [STORE_KEY]?: RoomSnapshot };
 
 const isoNow = () => new Date().toISOString();
 const makeId = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
@@ -51,9 +50,11 @@ function clone<T>(value: T): T {
 }
 
 function getMutableStore() {
-  const runtime = globalThis as RuntimeGlobal;
-  runtime[STORE_KEY] ??= newSnapshot();
-  return runtime[STORE_KEY]!;
+  return loadState<RoomSnapshot>(STORE_KEY, newSnapshot);
+}
+
+function persist(store: RoomSnapshot) {
+  saveState(STORE_KEY, store);
 }
 
 function touch(store: RoomSnapshot) {
@@ -91,15 +92,23 @@ function validateText(value: unknown, field: string, maxLength: number) {
 export function readSnapshot(): RoomSnapshot {
   const store = getMutableStore();
   const now = Date.now();
+  let changed = false;
   for (const device of store.devices) {
     const stale = now - new Date(device.lastHeartbeatAt).getTime() > HEARTBEAT_TIMEOUT_MS;
-    device.online = !stale;
+    if (device.online === stale) {
+      device.online = !stale;
+      changed = true;
+    }
     if (stale) {
       for (const agent of device.agents) {
-        if (agent.status !== 'sleeping') agent.status = 'offline';
+        if (agent.status !== 'sleeping' && agent.status !== 'offline') {
+          agent.status = 'offline';
+          changed = true;
+        }
       }
     }
   }
+  if (changed) persist(store);
   return clone(store);
 }
 
@@ -144,6 +153,7 @@ export function registerDevice(input: ConnectRequest) {
     : [...store.devices, device];
   addEvent(store, { kind: existing ? 'device.reconnect' : 'device.connect', text: `${deviceName} 接入房间`, actorId: deviceId });
   touch(store);
+  persist(store);
   return { device: clone(device), snapshot: readSnapshot() };
 }
 
@@ -170,6 +180,7 @@ export function recordHeartbeat(input: HeartbeatRequest) {
 
   addEvent(store, { kind: 'device.heartbeat', text: `${device.name} 完成心跳同步`, actorId: deviceId });
   touch(store);
+  persist(store);
   return { device: clone(device), snapshot: readSnapshot() };
 }
 
@@ -190,6 +201,7 @@ export function addMessage(input: MessageRequest) {
   store.messages = [message, ...store.messages].slice(0, 500);
   addEvent(store, { kind: 'message.created', text: `${senderName} 发了一条群聊消息`, actorId: message.sender.id });
   touch(store);
+  persist(store);
   return { message: clone(message), snapshot: readSnapshot() };
 }
 
@@ -230,6 +242,7 @@ export function createTask(input: TaskRequest) {
   store.tasks = [task, ...store.tasks].slice(0, 300);
   addEvent(store, { kind: 'task.created', text: `${task.ownerName} 接受任务 ${task.id}` });
   touch(store);
+  persist(store);
   return { task: clone(task), snapshot: readSnapshot() };
 }
 
@@ -238,6 +251,7 @@ export function addAuditEvent(input: EventRequest) {
   const store = getMutableStore();
   addEvent(store, { kind: validateText(input.kind, 'kind', 80), text, actorId: input.actorId });
   touch(store);
+  persist(store);
   return { snapshot: readSnapshot() };
 }
 

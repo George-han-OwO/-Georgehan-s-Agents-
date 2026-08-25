@@ -1,4 +1,5 @@
 import { StoreError } from './room-store';
+import { loadState, saveState } from './state-store';
 import type {
   CompleteDevicePairingRequest,
   RevokeDeviceRequest,
@@ -43,14 +44,14 @@ type DeviceAuthStore = {
   usedNonces: Record<string, number>;
 };
 
-type RuntimeGlobal = typeof globalThis & { [DEVICE_AUTH_KEY]?: DeviceAuthStore };
-
 const isoNow = () => new Date().toISOString();
 
 function getStore() {
-  const runtime = globalThis as RuntimeGlobal;
-  runtime[DEVICE_AUTH_KEY] ??= { credentials: {}, pairings: [], usedNonces: {} };
-  return runtime[DEVICE_AUTH_KEY]!;
+  return loadState<DeviceAuthStore>(DEVICE_AUTH_KEY, () => ({ credentials: {}, pairings: [], usedNonces: {} }));
+}
+
+function persist(store: DeviceAuthStore) {
+  saveState(DEVICE_AUTH_KEY, store);
 }
 
 function text(value: unknown, field: string, maxLength = 180) {
@@ -96,20 +97,28 @@ async function validatePublicKey(publicKey: string) {
 }
 
 function prune(store: DeviceAuthStore, now = Date.now()) {
+  let changed = false;
+  const previousPairingCount = store.pairings.length;
   store.pairings = store.pairings.filter((pairing) => Date.parse(pairing.expiresAt) > now || pairing.usedAt !== null).slice(-MAX_PAIRINGS);
+  changed ||= store.pairings.length !== previousPairingCount;
   for (const [nonce, expiresAt] of Object.entries(store.usedNonces)) {
-    if (expiresAt <= now) delete store.usedNonces[nonce];
+    if (expiresAt <= now) {
+      delete store.usedNonces[nonce];
+      changed = true;
+    }
   }
+  return changed;
 }
 
 export async function startPairing(input: StartDevicePairingRequest = {}) {
-  const store = getStore();
-  prune(store);
   const now = new Date();
   const pairingCode = encodeBase64Url(randomBytes(18));
+  const codeHash = await sha256(pairingCode);
+  const store = getStore();
+  prune(store);
   const record: PairingRecord = {
     id: `pair_${crypto.randomUUID()}`,
-    codeHash: await sha256(pairingCode),
+    codeHash,
     expectedDeviceId: input.deviceId ? text(input.deviceId, 'deviceId', 100) : null,
     expectedDeviceName: input.deviceName ? text(input.deviceName, 'deviceName', 120) : null,
     createdAt: now.toISOString(),
@@ -117,6 +126,7 @@ export async function startPairing(input: StartDevicePairingRequest = {}) {
     usedAt: null,
   };
   store.pairings.push(record);
+  persist(store);
   return {
     pairingId: record.id,
     pairingCode,
@@ -132,9 +142,9 @@ export async function completePairing(input: CompleteDevicePairingRequest) {
   const deviceId = text(input?.deviceId, 'deviceId', 100);
   const deviceName = text(input?.deviceName, 'deviceName', 120);
   const publicKey = await validatePublicKey(input?.publicKey);
+  const hash = await sha256(pairingCode);
   const store = getStore();
   prune(store);
-  const hash = await sha256(pairingCode);
   const pairing = store.pairings.find((candidate) => candidate.codeHash === hash && candidate.usedAt === null && Date.parse(candidate.expiresAt) > Date.now());
   if (!pairing) throw new StoreError('配对码无效、已使用或已过期', 401);
   if (pairing.expectedDeviceId && pairing.expectedDeviceId !== deviceId) {
@@ -155,6 +165,7 @@ export async function completePairing(input: CompleteDevicePairingRequest) {
   };
   pairing.usedAt = now;
   store.credentials[deviceId] = credential;
+  persist(store);
   return {
     deviceId: credential.deviceId,
     deviceName: credential.deviceName,
@@ -176,6 +187,7 @@ export async function rotateDeviceKey(input: RotateDeviceKeyRequest) {
   current.publicKey = publicKey;
   current.keyVersion += 1;
   current.rotatedAt = now;
+  persist(store);
   return { deviceId, keyVersion: current.keyVersion, rotatedAt: now };
 }
 
@@ -186,12 +198,13 @@ export function revokeDevice(input: RevokeDeviceRequest) {
   if (!credential || credential.revokedAt) throw new StoreError('设备不存在或已经吊销', 404);
   const now = isoNow();
   credential.revokedAt = now;
+  persist(store);
   return { deviceId, revokedAt: now, reason: input.reason?.trim().slice(0, 240) || '管理员吊销' };
 }
 
 export function listDevices() {
   const store = getStore();
-  prune(store);
+  if (prune(store)) persist(store);
   return Object.values(store.credentials).map((credential) => ({
     deviceId: credential.deviceId,
     deviceName: credential.deviceName,
@@ -224,13 +237,10 @@ export async function verifyDeviceRequest(request: Request): Promise<DeviceAuthC
   if (!Number.isSafeInteger(timestamp) || Math.abs(Date.now() - timestamp) > SIGNATURE_CLOCK_SKEW_MS) {
     throw new StoreError('请求时间戳过期或时钟偏差过大', 401);
   }
-  const store = getStore();
-  prune(store);
-  const credential = store.credentials[deviceId];
+  const credential = getStore().credentials[deviceId];
   if (!credential || credential.revokedAt) throw new StoreError('设备未配对或凭证已吊销', 401);
   if (credential.keyVersion !== keyVersion) throw new StoreError('设备密钥版本已更新，请重新加载凭证', 401);
   const nonceKey = `${deviceId}:${nonce}`;
-  if (store.usedNonces[nonceKey]) throw new StoreError('检测到重复请求（nonce 已使用）', 409);
   const canonical = [
     timestampText,
     nonce,
@@ -246,7 +256,17 @@ export async function verifyDeviceRequest(request: Request): Promise<DeviceAuthC
     valid = false;
   }
   if (!valid) throw new StoreError('设备签名无效', 401);
-  store.usedNonces[nonceKey] = Date.now() + NONCE_TTL_MS;
+  // Re-read after async WebCrypto verification so concurrent valid requests
+  // cannot overwrite each other's nonce record during the replay window.
+  const current = getStore();
+  prune(current);
+  const currentCredential = current.credentials[deviceId];
+  if (!currentCredential || currentCredential.revokedAt || currentCredential.keyVersion !== keyVersion) {
+    throw new StoreError('设备凭证已变更或已吊销', 401);
+  }
+  if (current.usedNonces[nonceKey]) throw new StoreError('检测到重复请求（nonce 已使用）', 409);
+  current.usedNonces[nonceKey] = Date.now() + NONCE_TTL_MS;
+  persist(current);
   return { kind: 'device', deviceId, keyVersion };
 }
 
