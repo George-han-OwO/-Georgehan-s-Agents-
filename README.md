@@ -70,6 +70,8 @@ npx vinext start --hostname 127.0.0.1 --port 8787
 
 局域网访问请通过 Caddy 的 HTTPS 入口；完整配置见 [自托管安全入口](deploy/self-host/README.md)。
 
+如果要把整份操作说明直接交给 4070 Windows 主机或其本机 Claw，请使用 [Murmur-4070-Windows-Deployment.md](Murmur-4070-Windows-Deployment.md)。
+
 ## 设备身份与配对
 
 管理员 Token 仅用于服务端管理和首次配对。已配对的设备不应把这个 Token 带入日常心跳、消息或模型切换请求。
