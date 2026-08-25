@@ -1,11 +1,13 @@
-import { failure, readJson, requireMutationAuth, success } from '@/lib/api';
+import { assertDeviceScope, failure, readJson, requireMutationAuth, success } from '@/lib/api';
 import { requestModelSwitch } from '@/lib/model-store';
 import type { SelectModelRequest } from '@/lib/protocol';
 
 export async function POST(request: Request) {
   try {
-    await requireMutationAuth(request);
-    return success(requestModelSwitch(await readJson<SelectModelRequest>(request)), 201);
+    const context = await requireMutationAuth(request);
+    const input = await readJson<SelectModelRequest>(request);
+    assertDeviceScope(context, input.deviceId);
+    return success(requestModelSwitch(input), 201);
   } catch (error) {
     return failure(error);
   }

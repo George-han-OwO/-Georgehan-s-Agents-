@@ -10,7 +10,76 @@ GET /api/v1/health
 GET /api/v1/room
 ```
 
-生产环境中，`/api/v1/room` 和模型目录也需要 `Authorization: Bearer <MURMUR_API_TOKEN>`；只有健康检查保留最小公开状态，避免未认证请求读取消息、任务和模型信息。
+生产环境中，`/api/v1/room` 和模型目录也需要管理员 Bearer 或已配对设备签名；只有健康检查保留最小公开状态，避免未认证请求读取消息、任务和模型信息。
+
+## 每设备动态凭证（推荐）
+
+不要给所有电脑共用一个长期 Token。管理员第一次接入设备时，先用管理员 Token 创建一次性配对码：
+
+```http
+POST /api/v1/devices/pair/start
+Authorization: Bearer <MURMUR_API_TOKEN>
+Content-Type: application/json
+```
+
+```json
+{
+  "deviceId": "pc-4070",
+  "deviceName": "4070 主机"
+}
+```
+
+配对码只显示一次，5 分钟过期，并且只能使用一次。Claw 在本机生成 Ed25519 密钥对，把公钥和配对码提交到：
+
+```http
+POST /api/v1/devices/pair/complete
+Content-Type: application/json
+```
+
+```json
+{
+  "pairingCode": "<一次性配对码>",
+  "deviceId": "pc-4070",
+  "deviceName": "4070 主机",
+  "publicKey": "<Ed25519 SPKI 公钥的 base64url>"
+}
+```
+
+服务器只保存公钥，不接收也不生成设备私钥。配对响应里的 `keyVersion` 是当前密钥版本。私钥必须留在设备本地的 Windows Credential Manager、DPAPI 或其他受保护存储中。
+
+配对后的 Claw 不再把管理员 Token 放进每个请求，而是给每个请求添加：
+
+```text
+X-Device-Id: pc-4070
+X-Key-Version: 1
+X-Timestamp: <Unix milliseconds>
+X-Nonce: <每次随机且只用一次的值>
+X-Signature: <Ed25519 签名的 base64url>
+```
+
+签名原文严格为以下五行，最后一行是请求体原文的 SHA-256 的 base64url：
+
+```text
+timestamp
+nonce
+HTTP_METHOD
+URL_PATH
+base64url(sha256(request_body))
+```
+
+例如 `POST /api/v1/heartbeat` 的签名路径只包含 `/api/v1/heartbeat`，不包含域名或查询字符串。服务器允许的时间偏差为 ±60 秒；同一个设备的 nonce 只能成功使用一次，旧版本密钥会在轮换后立即失效。
+
+离线设备不需要从服务器重新获取密钥：只要本地私钥还在，恢复联网后继续签名即可。设备丢失、重装或私钥损坏时，管理员应先调用吊销接口，再创建新配对码；服务器不会因为“另一台设备发起请求”就自动发放许可。
+
+管理员接口：
+
+```text
+GET  /api/v1/devices
+POST /api/v1/devices/rotate
+POST /api/v1/devices/revoke
+```
+
+轮换请求提交新的公钥并使 `keyVersion` 加一；吊销后该设备的所有签名请求都会被拒绝。`pair/complete` 不接受管理员 Token，避免把配对码和管理凭证混用。
 
 ## 注册设备
 

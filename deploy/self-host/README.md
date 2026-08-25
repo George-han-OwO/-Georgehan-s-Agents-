@@ -36,9 +36,11 @@ New-NetFirewallRule -DisplayName "Murmur HTTPS LAN" -Direction Inbound -Action A
 
 不要对 WAN/Public profile 添加放行规则，也不要在路由器上做端口映射。
 
-## 运行时密钥
+## 管理员和设备密钥
 
-服务端和 Claw connector 使用同一个 `MURMUR_API_TOKEN`，但 Token 必须通过本机受保护的环境变量或 Windows Credential Manager 配置。不要把 Token 写入 Markdown、Git、命令历史、截图或日志。
+`MURMUR_API_TOKEN` 现在是管理员/初始化凭证。它必须通过本机受保护的环境变量或 Windows Credential Manager 配置，不要把它写入 Markdown、Git、命令历史、截图或日志。
+
+每台设备应通过 `/api/v1/devices/pair/start` 和 `/api/v1/devices/pair/complete` 单独配对。设备在本地生成 Ed25519 私钥、公钥，只把公钥发给 Murmur；之后用 `X-Device-Id`、`X-Key-Version`、`X-Timestamp`、`X-Nonce`、`X-Signature` 请求头签名，不需要在每个运行时请求中携带管理员 Token。私钥只能放在 Windows Credential Manager、DPAPI 或其他受保护存储。
 
 建议使用 Windows/.NET 的密码学随机数生成器创建至少 32 字节随机值，并在发生怀疑泄露时立即轮换：
 
@@ -67,10 +69,14 @@ Claw 如果使用 `127.0.0.1:8787`，可以保持本机回环连接；其他设�
 - 请求体限制为 1 MB，降低异常大请求的资源消耗。
 - 安全响应头：禁止 MIME 嗅探、iframe 嵌入、危险浏览器能力和跨源资源滥用。
 - 可撤销 Token：怀疑泄露时更换服务端和 Claw 两侧的 Token。
+- 每设备 Ed25519 公钥：设备凭证互相隔离；服务器只保存公钥和版本，不会向设备下发私钥。
+- 一次性配对码：5 分钟有效、成功后立即失效，并可预绑定设备 ID，避免另一台设备复用许可。
+- 请求签名防重放：时间戳 ±60 秒、nonce 单次使用、密钥版本轮换后旧版本立即拒绝。
+- 离线恢复：设备离线时凭证不会自动失效；恢复联网后使用本地私钥继续签名。设备丢失或私钥损坏时先吊销旧凭证，再重新配对。
 
 ## 不能假装已经解决的问题
 
 - 如果 4070 Windows 主机本身被恶意软件或管理员权限入侵，应用层无法保护本机内存中的 Token 或模型内容。
 - 如果 Caddy CA 根证书被安装到不可信设备，HTTPS 信任边界会被破坏。
-- 当前限流和模型请求状态是进程内存；生产版本还需要持久化审计、设备凭证、锁定记录和备份。
+- 当前限流、设备凭证和模型请求状态是进程内存；生产版本还需要持久化审计、设备凭证、锁定记录和备份。重启进程会清空当前配对状态，因此正式部署前应接入持久化数据库。
 - 如果要求 Murmur 服务器本身也无法看到任务正文，需要额外设计端到端加密；这会改变服务器路由、搜索和审计能力，不能只加一个开关。

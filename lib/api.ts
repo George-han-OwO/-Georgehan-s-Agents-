@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { StoreError } from './room-store';
 import { PROTOCOL_VERSION } from './protocol';
+import {
+  type DeviceAuthContext,
+  signatureHeadersPresent,
+  verifyDeviceRequest,
+} from './device-auth';
 
 const SECURITY_KEY = '__murmurApiSecurityV1';
 const AUTH_MAX_FAILURES = 5;
@@ -79,22 +84,11 @@ export function failure(error: unknown) {
   return NextResponse.json({ ok: false, error: { message } }, { status: 400 });
 }
 
-export async function requireMutationAuth(request: Request) {
-  takeRequestSlot(request);
-  const requestUrl = new URL(request.url);
-  const forwardedProtocol = request.headers.get('x-forwarded-proto') ?? requestUrl.protocol.replace(':', '');
-  if (process.env.MURMUR_ENFORCE_HTTPS === 'true' && forwardedProtocol !== 'https' && !['localhost', '127.0.0.1'].includes(requestUrl.hostname)) {
-    throw new StoreError('写接口必须通过 HTTPS 访问', 426);
-  }
-  const configuredToken = process.env.MURMUR_API_TOKEN;
-  if (!configuredToken) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new StoreError('服务端尚未配置 MURMUR_API_TOKEN', 503);
-    }
-    return;
-  }
+async function authenticateAdmin(request: Request, configuredToken: string): Promise<DeviceAuthContext> {
   const authorization = request.headers.get('authorization') ?? '';
-  const suppliedToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : request.headers.get('x-murmur-token');
+  const suppliedToken = authorization.startsWith('Bearer ')
+    ? authorization.slice(7)
+    : request.headers.get('x-murmur-token');
   const key = getClientAddress(request);
   const state = getSecurityState();
   const now = Date.now();
@@ -111,6 +105,46 @@ export async function requireMutationAuth(request: Request) {
     throw new StoreError('无效的接口凭证', 401);
   }
   state.failures.delete(key);
+  return { kind: 'admin' };
+}
+
+export async function requireMutationAuth(request: Request): Promise<DeviceAuthContext> {
+  takeRequestSlot(request);
+  const requestUrl = new URL(request.url);
+  const forwardedProtocol = request.headers.get('x-forwarded-proto') ?? requestUrl.protocol.replace(':', '');
+  if (process.env.MURMUR_ENFORCE_HTTPS === 'true' && forwardedProtocol !== 'https' && !['localhost', '127.0.0.1'].includes(requestUrl.hostname)) {
+    throw new StoreError('写接口必须通过 HTTPS 访问', 426);
+  }
+  const configuredToken = process.env.MURMUR_API_TOKEN;
+  if (signatureHeadersPresent(request)) return verifyDeviceRequest(request);
+  if (!configuredToken) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new StoreError('服务端尚未配置 MURMUR_API_TOKEN', 503);
+    }
+    return { kind: 'admin' };
+  }
+  return authenticateAdmin(request, configuredToken);
+}
+
+export function requirePairingRequest(request: Request) {
+  takeRequestSlot(request);
+  const requestUrl = new URL(request.url);
+  const forwardedProtocol = request.headers.get('x-forwarded-proto') ?? requestUrl.protocol.replace(':', '');
+  if (process.env.MURMUR_ENFORCE_HTTPS === 'true' && forwardedProtocol !== 'https' && !['localhost', '127.0.0.1'].includes(requestUrl.hostname)) {
+    throw new StoreError('配对接口必须通过 HTTPS 访问', 426);
+  }
+}
+
+export async function requireAdminAuth(request: Request): Promise<DeviceAuthContext> {
+  const context = await requireMutationAuth(request);
+  if (context.kind !== 'admin') throw new StoreError('此操作只允许管理员凭证执行', 403);
+  return context;
+}
+
+export function assertDeviceScope(context: DeviceAuthContext, deviceId: string) {
+  if (context.kind === 'device' && context.deviceId !== deviceId) {
+    throw new StoreError('设备凭证不能操作其他设备', 403);
+  }
 }
 
 export async function readJson<T>(request: Request): Promise<T> {

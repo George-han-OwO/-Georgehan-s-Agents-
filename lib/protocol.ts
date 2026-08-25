@@ -159,3 +159,25 @@ export type AcknowledgeModelRequest = {
   actualModelId?: string;
   error?: string;
 };
+
+export type StartDevicePairingRequest = {
+  deviceId?: string;
+  deviceName?: string;
+};
+
+export type CompleteDevicePairingRequest = {
+  pairingCode: string;
+  deviceId: string;
+  deviceName: string;
+  publicKey: string;
+};
+
+export type RotateDeviceKeyRequest = {
+  deviceId: string;
+  publicKey: string;
+};
+
+export type RevokeDeviceRequest = {
+  deviceId: string;
+  reason?: string;
+};

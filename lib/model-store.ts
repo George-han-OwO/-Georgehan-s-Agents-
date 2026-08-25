@@ -159,3 +159,10 @@ export function acknowledgeModelSwitch(input: AcknowledgeModelRequest) {
   });
   return { request, models: readModels(request.deviceId) };
 }
+
+export function deviceIdForModelRequest(requestId: string) {
+  const id = requiredText(requestId, 'requestId', 180);
+  const request = getModelStore().requests.find((item) => item.id === id);
+  if (!request) throw new StoreError(`模型切换请求不存在：${id}`, 404);
+  return request.deviceId;
+}
