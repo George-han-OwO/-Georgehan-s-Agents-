@@ -107,6 +107,21 @@ Murmur 需要一个管理员/初始化凭证：`MURMUR_API_TOKEN`。它用于管
 
 George 需要通过受保护渠道把 Token 配置到启动 Murmur 的进程环境中。不要把真实值写到仓库、`README.md`、`Caddyfile`、聊天记录或任何可同步目录。
 
+如果 George 需要在 Windows PowerShell 5.1 中本地生成 Token，使用下面兼容的命令。最后一行显示的值只能复制到 George 自己的密码管理器；不要发送给 Claw 或写入文档。若输出是一长串 `A`，说明随机数生成失败，必须丢弃并重新生成。
+
+```powershell
+$TokenBytes = New-Object byte[] 32
+$TokenRng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $TokenRng.GetBytes($TokenBytes)
+}
+finally {
+    $TokenRng.Dispose()
+}
+$MurmurToken = [Convert]::ToBase64String($TokenBytes)
+$MurmurToken
+```
+
 仅用于当前 PowerShell 测试会话时，可由 George 在本机交互输入：
 
 ```powershell

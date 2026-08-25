@@ -42,11 +42,17 @@ New-NetFirewallRule -DisplayName "Murmur HTTPS LAN" -Direction Inbound -Action A
 
 每台设备应通过 `/api/v1/devices/pair/start` 和 `/api/v1/devices/pair/complete` 单独配对。设备在本地生成 Ed25519 私钥、公钥，只把公钥发给 Murmur；之后用 `X-Device-Id`、`X-Key-Version`、`X-Timestamp`、`X-Nonce`、`X-Signature` 请求头签名，不需要在每个运行时请求中携带管理员 Token。私钥只能放在 Windows Credential Manager、DPAPI 或其他受保护存储。
 
-建议使用 Windows/.NET 的密码学随机数生成器创建至少 32 字节随机值，并在发生怀疑泄露时立即轮换：
+建议使用 Windows/.NET 的密码学随机数生成器创建至少 32 字节随机值，并在发生怀疑泄露时立即轮换。下面的写法兼容 Windows PowerShell 5.1：
 
 ```powershell
 $bytes = New-Object byte[] 32
-[Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+  $rng.GetBytes($bytes)
+}
+finally {
+  $rng.Dispose()
+}
 [Convert]::ToBase64String($bytes)
 ```
 
