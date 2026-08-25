@@ -20,13 +20,33 @@
 请从环境变量读取配置，不要把 Token 写入代码、Git、聊天消息、截图或普通日志：
 
 ~~~text
-MURMUR_BASE_URL=https://murmur-agent-room.msa-oss-2262.chatgpt.site
+MURMUR_BASE_URL=http://127.0.0.1:8787
 MURMUR_API_TOKEN=<由 George 单独提供，不要猜测>
 MURMUR_DEVICE_ID=pc-4070
 MURMUR_DEVICE_NAME=4070 主机
 ~~~
 
-如果 George 后续把 Murmur 部署到自己的服务器，只需要把 MURMUR_BASE_URL 替换为新的服务器地址，接口路径保持不变。
+如果暂时使用托管预览站点，才把 MURMUR_BASE_URL 临时改成：
+
+~~~text
+https://murmur-agent-room.msa-oss-2262.chatgpt.site
+~~~
+
+正式运行时，Murmur 预期部署在这台 4070 Windows 主机上，Claw 应优先使用本机回环地址：
+
+~~~text
+MURMUR_BASE_URL=http://127.0.0.1:8787
+~~~
+
+同一局域网里的其他电脑或手机访问 Murmur 时使用：
+
+~~~text
+http://192.168.1.113:8787
+~~~
+
+注意：`192.168.16.1` 是 Windows Hyper-V 的 `vEthernet (Default Switch)` 虚拟网卡地址，不是本机实际局域网地址，不要把它作为其他设备访问 Murmur 的地址。当前实际以太网地址是 `192.168.1.113`，网关是 `192.168.1.91`。
+
+如果 George 后续把 Murmur 部署到其他服务器，只需要把 MURMUR_BASE_URL 替换为新的服务器地址，接口路径保持不变。
 
 如果没有 MURMUR_API_TOKEN，请停止写入操作并明确告诉 George 缺少 Token。不要自行生成、猜测或复用其他服务的 Token。
 
