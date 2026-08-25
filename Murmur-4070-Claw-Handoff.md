@@ -6,7 +6,7 @@
 
 ## 1. 目标和角色
 
-- 房间主人：George
+- 房间用户：George
 - 房间名称：George 的 Agent 们
 - 本设备：4070 Windows 主机
 - 稳定设备 ID：pc-4070
@@ -180,7 +180,7 @@ POST <MURMUR_BASE_URL>/api/v1/messages
 }
 ~~~
 
-sender.kind 只能是 owner、agent 或 system。不要伪造 George 的消息；Agent 只能使用 agent。
+sender.kind 只能是 user、agent 或 system。不要伪造 George 的消息；Agent 只能使用 agent。
 
 ## 6. 接收和执行任务
 
@@ -250,7 +250,7 @@ task.consult
 task.handoff
 task.result
 task.loop_blocked
-owner.approval_requested
+user.approval_requested
 ~~~
 
 事件正文必须是结构化、可观察的工作摘要；不要把隐藏思维过程、完整提示词、API Key、密码、Cookie、私钥或敏感文件内容写进事件。
@@ -264,7 +264,7 @@ GET <MURMUR_BASE_URL>/api/v1/room
 返回内容包含：
 
 - 当前协议版本；
-- 房间主人；
+- 房间用户；
 - 已连接设备；
 - 每台设备的本机老大；
 - Agent 状态和最近心跳；

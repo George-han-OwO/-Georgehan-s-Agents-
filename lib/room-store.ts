@@ -35,7 +35,7 @@ function newSnapshot(): RoomSnapshot {
   return {
     protocol: PROTOCOL_VERSION,
     roomId: 'room-george',
-    ownerName: 'George',
+    userName: 'George',
     version: 0,
     updatedAt: isoNow(),
     devices: [],
@@ -230,8 +230,8 @@ export function createTask(input: TaskRequest) {
   const task: RoomTask = {
     id: `T-${String(store.tasks.length + 1).padStart(3, '0')}`,
     title,
-    ownerAgentId: assignee?.id ?? null,
-    ownerName: assignee?.name ?? '待认领',
+    assigneeAgentId: assignee?.id ?? null,
+    assigneeName: assignee?.name ?? '待认领',
     status: assignee ? '执行中' : '待认领',
     progress: assignee ? 1 : 0,
     priority: input.priority ?? '中',
@@ -240,7 +240,7 @@ export function createTask(input: TaskRequest) {
     updatedAt: isoNow(),
   };
   store.tasks = [task, ...store.tasks].slice(0, 300);
-  addEvent(store, { kind: 'task.created', text: `${task.ownerName} 接受任务 ${task.id}` });
+  addEvent(store, { kind: 'task.created', text: `${task.assigneeName} 接受任务 ${task.id}` });
   touch(store);
   persist(store);
   return { task: clone(task), snapshot: readSnapshot() };

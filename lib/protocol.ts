@@ -1,7 +1,7 @@
 export const PROTOCOL_VERSION = 'murmur.v1';
 
 export type PresenceStatus = 'online' | 'idle' | 'busy' | 'sleeping' | 'offline';
-export type TaskStatus = '待认领' | '执行中' | '等待主人' | '已完成' | '已取消';
+export type TaskStatus = '待认领' | '执行中' | '等待用户' | '已完成' | '已取消';
 export type TaskPriority = '高' | '中' | '低';
 
 export type AgentRegistration = {
@@ -41,7 +41,7 @@ export type ConnectedDevice = DeviceRegistration & {
 
 export type RoomMessage = {
   id: string;
-  sender: { kind: 'owner' | 'agent' | 'system'; id: string; name: string };
+  sender: { kind: 'user' | 'agent' | 'system'; id: string; name: string };
   text: string;
   mentions: string[];
   createdAt: string;
@@ -50,8 +50,8 @@ export type RoomMessage = {
 export type RoomTask = {
   id: string;
   title: string;
-  ownerAgentId: string | null;
-  ownerName: string;
+  assigneeAgentId: string | null;
+  assigneeName: string;
   status: TaskStatus;
   progress: number;
   priority: TaskPriority;
@@ -71,7 +71,7 @@ export type AuditEvent = {
 export type RoomSnapshot = {
   protocol: typeof PROTOCOL_VERSION;
   roomId: string;
-  ownerName: string;
+  userName: string;
   version: number;
   updatedAt: string;
   devices: ConnectedDevice[];
@@ -97,7 +97,7 @@ export type HeartbeatRequest = {
 };
 
 export type MessageRequest = {
-  sender: { kind: 'owner' | 'agent' | 'system'; id: string; name: string };
+  sender: { kind: 'user' | 'agent' | 'system'; id: string; name: string };
   text: string;
   mentions?: string[];
 };
